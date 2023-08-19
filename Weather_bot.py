@@ -57,7 +57,7 @@ async def echo(message: types.Message):
 # обрабатывается при получении геолокации от юзера
 @dp.message_handler(content_types=[types.ContentType.LOCATION])
 async def handle_location(message: types.Message):
-    try:
+    #try:
         # получить широту
         global latitude
         latitude = message.location.latitude
@@ -70,8 +70,8 @@ async def handle_location(message: types.Message):
             await message.reply(get_weather_data.now(latitude, longitude), reply_markup=keyboard)
         elif users_list[q] == 'five days':
             await message.reply(get_weather_data.five_days_every_three_hours(latitude, longitude), reply_markup=keyboard)
-    except:
-        await message.reply('Nope, try again)', reply_markup=keyboard)
+    #except:
+    #    await message.reply('Nope, try again)', reply_markup=keyboard)
 
 
 #******************************************************************************************
@@ -139,14 +139,16 @@ class compile_message_form_data:
     def weather_for_five_days(data_for_five_days):
         from datetime import timedelta
         class data_class:
-            def __init__(self, time_emoji, time, temp, weather, weather_emoji, weather_description, wind):
+            def __init__(self, time_emoji, time, temp, weather, weather_emoji, weather_description, humidity, wind, rain_volume):
                 self.time_emoji = time_emoji
                 self.time = time
                 self.temp = temp
                 self.weather = weather
                 self.weather_emoji = weather_emoji
                 self.weather_description = weather_description
+                self.humidity = humidity
                 self.wind = wind
+                self.rain_volume = rain_volume
 
         # экземпляр класса в котором сохранены нужные данные
         data_objects = []
@@ -161,6 +163,9 @@ class compile_message_form_data:
         sunset = Search_in_data.find_sunset(data_for_five_days)
         date_begin = Search_in_data.find_date(data_for_five_days)
 
+        is_rain = False
+        rain_volume_description = ''
+
         # заполнение переменных для экземпляров класса
         for data_three_hour in time_matches:
             time = re.search(r'\d\d', data_three_hour).group()
@@ -170,13 +175,20 @@ class compile_message_form_data:
             waether_description = Search_in_data.find_weather_description(data_three_hour)
             weather_emoji = Emoji_for_variable.choose_weather_emoji(weather)
             wind_speed = Search_in_data.find_wind_speed(data_three_hour)
+            humidity = Search_in_data.find_humidyty(data_three_hour)
+            rain_volume = Search_in_data.find_rain_volume(data_three_hour)
+            if rain_volume != '':
+                is_rain = True
 
-            obj = data_class(time_emoji, time, temp, weather, weather_emoji, waether_description, wind_speed)
+            obj = data_class(time_emoji, time, temp, weather, weather_emoji, waether_description, humidity, wind_speed, rain_volume)
             data_objects.append(obj)            
         
-        # хуйня что собирает из объекта класса нормальную строку с погодой на отрезок в 3 часа
-        func_str = lambda i: f'{i.time_emoji}{i.time} - {i.temp}° ({i.weather}{i.weather_emoji}) Wind {i.wind}m/s'
+        # хуйня что собирает из объекта класса нормальную строку с погодой на отрезок в 3 часа# func_str = lambda i: f'{i.time_emoji}{i.time} - {i.temp}° ({i.weather}{i.weather_emoji}) Wind {i.wind}m/s'
+        func_str = lambda i: f'{i.time_emoji}{i.time} - {i.temp}° ({i.weather_emoji}) {i.humidity}% {i.wind}m/s {i.rain_volume}'
         
+        if is_rain:
+            rain_volume_description = '                                                            ^ Rain vol.'
+
         # подготавливает данные собирая строки данных из разных экземпляров класса
         def for_for_it(data):
             day = ''
@@ -198,8 +210,17 @@ class compile_message_form_data:
         # хуйнюшка для прибавления дней к дате запроса данных
         plus_days = lambda x: date_begin + timedelta(days=x)
 
+        desription = f'''
+{rain_volume_description}
+                                           ^ Wind
+                                 ^ Humidity
+                          ^ Weather 
+                ^ Temperature
+        ^ Time
+'''
+
         # перемога
-        mr_return = f'📍{location} {country_name}\n\nToday:{next(create_day)}\n\nTomorrow:{next(create_day)}\n\n{plus_days(2).strftime("%d.%m")}:{next(create_day)}\n\n{plus_days(3).strftime("%d.%m")}:{next(create_day)}\n\n{plus_days(4).strftime("%d.%m")}:{next(create_day)}'
+        mr_return = f'📍{location} {country_name}\n\nToday:{next(create_day)}\n\nTomorrow:{next(create_day)}\n\n{plus_days(2).strftime("%d.%m")}:{next(create_day)}\n\n{plus_days(3).strftime("%d.%m")}:{next(create_day)}\n\n{plus_days(4).strftime("%d.%m")}:{next(create_day)}{desription}'
         return mr_return
 
 
@@ -311,6 +332,16 @@ class Search_in_data:
         date = datetime.strptime(date[-1], '%Y-%m-%d')
 
         return date
+    
+    def find_rain_volume(weather_data):
+        try:
+            rain_volume_match = re.search(r'rain:....\d.\d\d', weather_data)
+            rain_volume = rain_volume_match.group().split(':')[-1]
+            rain = f'🌧: {rain_volume}mm'
+        except:
+            rain = ''
+
+        return rain
        
 # (подбор нужного эмоджи)
 class Emoji_for_variable:
