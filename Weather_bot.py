@@ -1,91 +1,145 @@
-#******************************************************************************************
+#*********************************************************************************************************************************************************************************************************************************
 # API_TOKEN
 import logging
 from aiogram import Bot, Dispatcher
 from keys import API_TOKEN
 
-# Настройки подключения по логину 
+# Пишел логи в консоль
 logging.basicConfig(level=logging.INFO)
 
 # Инициализация бота и диспатчера
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)
+bot = Bot(token=API_TOKEN, parse_mode='HTML')
+dp = Dispatcher()
     
 
-#******************************************************************************************
+
+#*********************************************************************************************************************************************************************************************************************************
 # Конструкции для обработки и отправки сообщений пользователю
 from aiogram import types
+from random import randint
 import emoji
 
-# запоминает последний выбор вывода погоды для пользователя, используется при отправки им местоположения 
-users_list = {}
+from aiogram.types import ReplyKeyboardRemove
 
 # обрабатывается при получении /start
-@dp.message_handler(commands=['start'])
 async def send_welcome(message: types.Message):
-    await message.reply('Hi my dear human friend ^_^', reply_markup=keyboard)    
+    # добавить имя пользователя в бд 
+    await insert_user_into_table(message.from_user.first_name)
 
-# обрабатывается при получении 'Weather now'
-@dp.message_handler(text='Weather now')
-async def reply_message(message: types.Message):
-    await message.reply('Ok, just send my your location', reply_markup=keyboard_send_location)
-    q = message['from']['first_name']
-    users_list[q] = 'now'
+    # добавить кнопки в меню
+    await set_commands(bot)
 
-# обрабатывается при получении 'Weather for five days'
-@dp.message_handler(text='Weather for five days')
-async def reply_message(message: types.Message):
-    await message.reply('Ok, just send my your location', reply_markup=keyboard_send_location)
-    q = message['from']['first_name']
-    users_list[q] = 'five days'
+    # ответить и предоставить клавиатуру
+    await message.reply('Hi my dear human friend ^_^', reply_markup=keyboard_get_weather()) 
 
-# обрабатывается при получении 'test'
-@dp.message_handler(text='test')
-async def reply_message(message: types.Message):
-    from keys import appid
-    waether_five_days = requests.get(f'https://api.openweathermap.org/data/2.5/forecast?lat=50.408991&lon=30.635077&appid={appid}')
-    data_raw = re.sub(r'"*;*"*', "", waether_five_days.text) 
-    data = re.sub(',', '/', data_raw)
-    # вернуть готовое сообщение
-    compile_message_form_data.weather_for_five_days(data)
+# обрабатывается по приколу (в разработке)
+async def show_my_loc(message: types.Message):
+    await message.reply('i added new keyboard', reply_markup=menu_my_locations())
 
 # обрабатывается при получении остального текста
-@dp.message_handler()
 async def echo(message: types.Message):
-    await message.answer(message.text)
-
-# обрабатывается при получении геолокации от юзера
-@dp.message_handler(content_types=[types.ContentType.LOCATION])
-async def handle_location(message: types.Message):
-    #try:
-        # получить широту
-        global latitude
-        latitude = message.location.latitude
-        # получить долготу
-        global longitude
-        longitude = message.location.longitude
-        # отправить сообщение с готовым описанием погода на сейчас
-        q = message['from']['first_name']
-        if users_list[q] == 'now':
-            await message.reply(get_weather_data.now(latitude, longitude), reply_markup=keyboard)
-        elif users_list[q] == 'five days':
-            await message.reply(get_weather_data.five_days_every_three_hours(latitude, longitude), reply_markup=keyboard)
-    #except:
-    #    await message.reply('Nope, try again)', reply_markup=keyboard)
+    ans = randint(0, 5)
+    ans_list = ['🤦🏻‍♀️', '🤦🏼‍♀️', '🤦🏽‍♀️', '🤷🏻‍♀️', '🤷🏼‍♀️', '🤷🏽‍♀️']
+    await message.answer(ans_list[ans])
 
 
-#******************************************************************************************
-# Кнопки
-keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-keyboard.add('Weather now').add('Weather for five days')
 
-keyboard_send_location = types.ReplyKeyboardMarkup(resize_keyboard=True)
-button = types.KeyboardButton(text="Send location", request_location=True)
-keyboard_send_location.add(button)
+#*********************************************************************************************************************************************************************************************************************************
+# Машины состояний
+# ... погода 'Weather now'
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
+
+class StepsForm_one(StatesGroup):
+    get_loc_1 = State()
+
+async def reply_for_now(message: types.Message, state: FSMContext):
+    await message.reply('Ok, just send my your location', reply_markup=keyboard_send_location())
+
+    # переключение формы на состояние get_loc (сработает только при получении геолокации)
+    await state.set_state(StepsForm_one.get_loc_1)
+
+async def return_weather_now(message: types.Message):
+    # получение из геолокации пользоветя широты и долготы
+    latitude = message.location.latitude
+    longitude = message.location.longitude
+
+    # вызов фунции запроса к API, парсинга данных и собирание их в полноценную строку
+    await message.reply(get_weather_data.now(latitude, longitude), reply_markup=keyboard_get_weather())
 
 
-#******************************************************************************************
-# Получение данных из сторонних API
+# ... погода 'Weather for five days'
+class StepsForm_two(StatesGroup):
+    get_loc_2 = State()
+
+async def reply_for_five_days(message: types.Message, state: FSMContext):
+    await message.reply('Ok, just send my your location', reply_markup=keyboard_send_location())
+
+    await state.set_state(StepsForm_two.get_loc_2)
+
+async def return_for_five_days(message: types.Message):
+    # получение из геолокации пользоветя широты и долготы
+    latitude = message.location.latitude
+    longitude = message.location.longitude
+
+    # вызов фунции запроса к API, парсинга данных и собирание их в полноценную строку
+    await message.reply(get_weather_data.five_days_every_three_hours(latitude, longitude), reply_markup=keyboard_get_weather())
+
+
+# заполнение и сохранение Add new location
+
+
+# удаление локации из бд по нажатию на Deleted one of the locations
+
+
+
+#*********************************************************************************************************************************************************************************************************************************
+# Кнопки 
+# ... на месте клавиатуры
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
+def keyboard_get_weather():
+    kb = ReplyKeyboardBuilder()
+
+    kb.button(text='Weather now')
+    kb.button(text='Weather for five days')
+
+    kb.adjust(1, 1)
+
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+def keyboard_send_location():
+    kb = ReplyKeyboardBuilder()
+
+    kb.button(text='Send location', request_location=True)
+
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+def menu_my_locations(): # на нажатие кнопок должна срабатывать машина состояний
+    kb = ReplyKeyboardBuilder()
+
+    kb.button(text='Add new location')
+    kb.button(text='Deleted one of the locations')
+
+    kb.adjust(1, 1)
+
+    return kb.as_markup(resize_keyboard = True, one_time_keyboard=True)
+
+# ... меню
+from aiogram import Bot
+from aiogram.types import BotCommand
+
+async def set_commands(bot: Bot):
+    commands = [
+    BotCommand(command="start", description="Menu"),
+    BotCommand(command="my_locations", description="My favorite locations"),
+    ]
+
+    await bot.set_my_commands(commands)
+
+
+#*********************************************************************************************************************************************************************************************************************************
+# Получение данных из API
 import requests
 from keys import appid
 
@@ -109,7 +163,61 @@ class get_weather_data:
         return compile_message_form_data.weather_for_five_days(data)
 
 
-#******************************************************************************************
+
+#*********************************************************************************************************************************************************************************************************************************
+# Приколы с данными в postgreSQL
+import asyncio
+import asyncpg
+
+# добавить уникального пользователя в бд
+async def insert_user_into_table(user_name):
+    # подсключение к бд
+    from keys import DATA_BASE
+    conn = await asyncpg.connect(DATA_BASE)
+
+    try:
+        # сохранить *имя пользователя* в столбец "user_name" (если в столбце "user_name" нет *имя пользователя* )
+        await conn.execute('INSERT INTO users(user_name) SELECT ($1) WHERE NOT EXISTS (SELECT user_name FROM users WHERE user_name = $1);', f'{user_name}')
+        
+    except asyncpg.UndefinedTableError:
+        # если ошибка(таблицы не существует) - создать таблицу, где колонки: уникальный pk, имя пользователя
+        await conn.execute('CREATE TABLE users(id serial PRIMARY KEY, user_name text)')
+        # запустить ещё раз def (типа рекурсия) 
+        await insert_user_into_table(user_name)
+
+    # отключится от бд
+    await conn.close()
+
+# Получить список локаций пользователя из бд
+async def get_locations_from_table():
+    return
+
+# добавить локацию пользователя в бд
+async def insert_location_into_table(loc_name, lat, lon):
+    # подсключение к бд
+    from keys import DATA_BASE
+    conn = await asyncpg.connect(DATA_BASE)
+
+    try:
+        # добавить любимую локацию в бд, где указывается pk для имени пользователя из тиблицы users, имя локации, долгота и широта
+        await conn.execute('INSERT INTO favorite_locations(user_id, location_name, lat, lon) VALUES($1, $2, $3, $4)', '{___}', '{___}', '{___}', '{___}')
+
+    except asyncpg.UndefinedTableError:
+        # если ошибка(таблицы не существует) - создать таблицу
+        await conn.execute('CREATE TABLE favorite_locations(user_id = integer, location_name = text, lat = float, lon = float)')
+        # запустить ещё раз def (типа рекурсия) 
+        await insert_location_into_table(loc_name, lat, lon)
+
+    # отключится от бд
+    await conn.close()
+
+# Удалить локацию пользователя из бд
+async def delete_location_from_table():
+    return
+
+
+
+#*********************************************************************************************************************************************************************************************************************************
 # Функция собирающая текст для сообщения о погоде на данный момент
 import re
 
@@ -184,11 +292,8 @@ class compile_message_form_data:
             data_objects.append(obj)            
         
         # хуйня что собирает из объекта класса нормальную строку с погодой на отрезок в 3 часа# func_str = lambda i: f'{i.time_emoji}{i.time} - {i.temp}° ({i.weather}{i.weather_emoji}) Wind {i.wind}m/s'
-        func_str = lambda i: f'{i.time_emoji}{i.time} - {i.temp}° ({i.weather_emoji}) {i.humidity}% {i.wind}m/s {i.rain_volume}'
+        func_str = lambda i: f'{i.time_emoji}{i.time}:00 - {i.temp}° ({i.weather_emoji}) {i.humidity}% {i.wind}m/s {i.rain_volume}'
         
-        if is_rain:
-            rain_volume_description = '                                                            ^ Rain vol.'
-
         # подготавливает данные собирая строки данных из разных экземпляров класса
         def for_for_it(data):
             day = ''
@@ -210,21 +315,13 @@ class compile_message_form_data:
         # хуйнюшка для прибавления дней к дате запроса данных
         plus_days = lambda x: date_begin + timedelta(days=x)
 
-        desription = f'''
-{rain_volume_description}
-                                           ^ Wind
-                                 ^ Humidity
-                          ^ Weather 
-                ^ Temperature
-        ^ Time
-'''
-
         # перемога
-        mr_return = f'📍{location} {country_name}\n\nToday:{next(create_day)}\n\nTomorrow:{next(create_day)}\n\n{plus_days(2).strftime("%d.%m")}:{next(create_day)}\n\n{plus_days(3).strftime("%d.%m")}:{next(create_day)}\n\n{plus_days(4).strftime("%d.%m")}:{next(create_day)}{desription}'
+        mr_return = f'📍{location} {country_name}\n\nToday:{next(create_day)}\n\nTomorrow:{next(create_day)}\n\n{plus_days(2).strftime("%d.%m")}:{next(create_day)}\n\n{plus_days(3).strftime("%d.%m")}:{next(create_day)}\n\n{plus_days(4).strftime("%d.%m")}:{next(create_day)}'
         return mr_return
 
 
-#******************************************************************************************
+
+#*********************************************************************************************************************************************************************************************************************************
 # Классы обработки данных
 
 # (поиск данных в строке)
@@ -337,7 +434,7 @@ class Search_in_data:
         try:
             rain_volume_match = re.search(r'rain:....\d.\d\d', weather_data)
             rain_volume = rain_volume_match.group().split(':')[-1]
-            rain = f'🌧: {rain_volume}mm'
+            rain = f'({rain_volume}mm)'
         except:
             rain = ''
 
@@ -431,9 +528,34 @@ class Clouds_or_rain:
         return clouds_or_rain
 
 
-#******************************************************************************************
+
+#*********************************************************************************************************************************************************************************************************************************
 # Для старта бота
-from aiogram import executor
+from aiogram import F
+
+async def Main():
+    # middwares:
+    
+    # default handlers:
+    dp.message.register(send_welcome, F.text == '/start')                           # при первом старте бота
+    
+    dp.message.register(reply_for_now, F.text == 'Weather now')                     # дефолт кнопка
+    dp.message.register(return_weather_now, F.location, StepsForm_one.get_loc_1)    # "StepsForm_one.get_loc_1" - запустится только из состояния "get_loc_1" которое задается в хэндлере "async def reply_for_now"
+
+    dp.message.register(reply_for_five_days, F.text == 'Weather for five days')     # дефолт кнопка
+    dp.message.register(return_for_five_days, F.location, StepsForm_two.get_loc_2)  # "StepsForm_one.get_loc_2" - запустится только из состояния "get_loc_2" которое задается в хэндлере "async def reply_for_five_days"
+
+    dp.message.register(show_my_loc, F.text == '/my_locations')                     # кнопка меню - список моих локаций (в разработке)
+
+    dp.message.register(echo, F.text)                                               # отвечает на все остальные сообщение эмоджи "🤷🏽‍♀️"
+
+
+    # bot start:
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
+
 
 if __name__ == '__main__':
-    executor.start_polling(dp)#, skip_updates=True
+    asyncio.run(Main())
