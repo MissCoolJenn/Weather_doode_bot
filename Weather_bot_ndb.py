@@ -24,7 +24,7 @@ from aiogram.types import ReplyKeyboardRemove
 # обрабатывается при получении /start
 async def send_welcome(message: types.Message):
     # добавить имя пользователя в бд 
-    await insert_user_into_table(message.from_user.first_name)
+    # await insert_user_into_table(message.from_user.first_name)
 
     # добавить кнопки в меню
     await set_commands(bot)
@@ -284,6 +284,7 @@ from keys import appid
 class get_weather_data:
     def now(lat, lon):
         responce = requests.get(f'https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={appid}')
+        print(responce)
 
         data_raw = re.sub(r'"*;*"*', "", responce.text) 
         data = re.sub(',', '/', data_raw)
